@@ -92,6 +92,8 @@ chmod +x stop_ubuntu.sh
 chmod +x install_ubuntu.sh
 chmod +x start_rfid_serial.sh
 chmod +x start_fullscreen.sh
+chmod +x test_api.sh
+chmod +x diagnostico.sh
 
 # Inicializar banco de dados
 echo ""

@@ -46,20 +46,30 @@ if [ -z "$VIRTUAL_ENV" ]; then
     exit 1
 fi
 
+# Verificar se porta 8000 já está em uso
+echo -e "${BLUE}🔍 Verificando porta 8000...${NC}"
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  Porta 8000 já está em uso!${NC}"
+    echo "Encerrando processo anterior..."
+    sudo kill -9 $(lsof -t -i:8000) 2>/dev/null || true
+    sleep 2
+fi
+
 # Iniciar API Backend
 echo -e "${GREEN}🚀 Iniciando API Backend...${NC}"
 cd backend
-python3 main.py > ../logs/api.log 2>&1 &
+uvicorn main:app --host 0.0.0.0 --port 8000 > ../logs/api.log 2>&1 &
 API_PID=$!
 cd ..
 echo "  ✓ API iniciada (PID: $API_PID)"
 echo "  📄 Log: logs/api.log"
-sleep 2
+sleep 3
 
 # Verificar se API está rodando
 if ! ps -p $API_PID > /dev/null; then
     echo -e "${RED}❌ Erro ao iniciar API!${NC}"
-    echo "Verifique o log em: logs/api.log"
+    echo "Últimas linhas do log:"
+    tail -n 20 logs/api.log
     exit 1
 fi
 
@@ -100,18 +110,31 @@ echo "$RFID_PID" >> "$PID_FILE"
 # Aguardar API estar pronta
 echo ""
 echo -e "${BLUE}⏳ Aguardando API ficar online...${NC}"
-for i in {1..10}; do
-    if curl -s http://localhost:8000/ > /dev/null 2>&1; then
+API_READY=false
+for i in {1..30}; do
+    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
         echo -e "${GREEN}  ✓ API está online!${NC}"
+        API_READY=true
         break
     fi
+    echo -n "."
     sleep 1
-    if [ $i -eq 10 ]; then
-        echo -e "${RED}❌ Timeout: API não respondeu${NC}"
+done
+echo ""
+
+if [ "$API_READY" = false ]; then
+    echo -e "${RED}❌ Timeout: API não respondeu após 30 segundos${NC}"
+    echo "Últimas linhas do log:"
+    tail -n 30 logs/api.log
+    echo ""
+    echo -e "${YELLOW}Deseja continuar mesmo assim? (s/N)${NC}"
+    read -t 5 -n 1 response || response="n"
+    echo ""
+    if [[ ! $response =~ ^[Ss]$ ]]; then
         bash stop_ubuntu.sh
         exit 1
     fi
-done
+fi
 
 # Abrir Chrome em tela cheia
 echo ""

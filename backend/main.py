@@ -76,6 +76,27 @@ def get_db_session():
 async def root():
     return {"message": "Portal RFID - Biamar UR4 API", "status": "online"}
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint para verificar se a API está funcionando"""
+    try:
+        # Testar conexão com banco de dados
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
 @app.post("/api/rfid/event")
 async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get_db_session)):
     """Registra um evento de leitura RFID"""
@@ -248,6 +269,8 @@ async def get_recent_events(limit: int = 50, db: Session = Depends(get_db_sessio
         "session_id": e.session_id
     } for e in events]
 
+# Para desenvolvimento: execute com `python3 main.py`
+# Para produção: use `uvicorn main:app --host 0.0.0.0 --port 8000`
 if __name__ == "__main__":
     import uvicorn
     print("=" * 60)
@@ -255,5 +278,6 @@ if __name__ == "__main__":
     print("=" * 60)
     print("📡 Servidor: http://0.0.0.0:8000")
     print("📚 Documentação: http://localhost:8000/docs")
+    print("📊 Health Check: http://localhost:8000/health")
     print("=" * 60)
     uvicorn.run(app, host="0.0.0.0", port=8000)
