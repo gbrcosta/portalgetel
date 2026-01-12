@@ -65,12 +65,25 @@ fi
 
 # Iniciar Leitor RFID
 echo ""
-echo -e "${GREEN}📡 Iniciando Leitor RFID...${NC}"
-cd scripts
-python3 ur4_rfid_reader.py > ../logs/rfid.log 2>&1 &
-RFID_PID=$!
-cd ..
-echo "  ✓ Leitor RFID iniciado (PID: $RFID_PID)"
+echo -e "${GREEN}📡 Iniciando Leitor RFID (Conexão Serial)...${NC}"
+
+# Verificar se porta serial existe
+if [ -e "/dev/ttyUSB0" ]; then
+    echo "  ✓ Porta /dev/ttyUSB0 encontrada"
+    cd scripts
+    python3 ur4_rfid_serial.py > ../logs/rfid.log 2>&1 &
+    RFID_PID=$!
+    cd ..
+    echo "  ✓ Leitor RFID Serial iniciado (PID: $RFID_PID)"
+else
+    echo -e "${YELLOW}  ⚠️  Porta /dev/ttyUSB0 não encontrada${NC}"
+    echo "  Tentando modo socket (UR4 via rede)..."
+    cd scripts
+    python3 ur4_rfid_reader.py > ../logs/rfid.log 2>&1 &
+    RFID_PID=$!
+    cd ..
+    echo "  ✓ Leitor RFID Socket iniciado (PID: $RFID_PID)"
+fi
 echo "  📄 Log: logs/rfid.log"
 sleep 2
 
