@@ -63,7 +63,10 @@ API_PID=$!
 cd ..
 echo "  ✓ API iniciada (PID: $API_PID)"
 echo "  📄 Log: logs/api.log"
-sleep 3
+
+# Aguardar um pouco mais para garantir que a API iniciou
+echo "  ⏳ Aguardando API inicializar..."
+sleep 5
 
 # Verificar se API está rodando
 if ! ps -p $API_PID > /dev/null; then
@@ -72,6 +75,8 @@ if ! ps -p $API_PID > /dev/null; then
     tail -n 20 logs/api.log
     exit 1
 fi
+
+echo "  ✓ Processo da API está ativo"
 
 # Iniciar Leitor RFID
 echo ""
@@ -104,31 +109,37 @@ if ! ps -p $RFID_PID > /dev/null; then
 fi
 
 # Salvar PIDs
-echo "$API_PID" > "$PID_FILE"
-echo "$RFID_PID" >> "$PID_FILE"
-
-# Aguardar API estar pronta
-echo ""
-echo -e "${BLUE}⏳ Aguardando API ficar online...${NC}"
+echo "$API_PID" > Testando conexão com a API...${NC}"
 API_READY=false
-for i in {1..30}; do
-    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-        echo -e "${GREEN}  ✓ API está online!${NC}"
+
+# Tentar diferentes endpoints
+for i in {1..20}; do
+    # Tentar endpoint raiz primeiro
+    if curl -s -f http://localhost:8000/ > /dev/null 2>&1; then
+        echo -e "${GREEN}  ✓ API está online e respondendo!${NC}"
         API_READY=true
         break
     fi
-    echo -n "."
+    
+    # Mostrar progresso
+    if [ $((i % 5)) -eq 0 ]; then
+        echo "  Tentativa $i/20..."
+    fi
     sleep 1
 done
-echo ""
 
 if [ "$API_READY" = false ]; then
-    echo -e "${RED}❌ Timeout: API não respondeu após 30 segundos${NC}"
-    echo "Últimas linhas do log:"
-    tail -n 30 logs/api.log
+    echo -e "${YELLOW}⚠️  API não respondeu aos testes de conexão${NC}"
     echo ""
-    echo -e "${YELLOW}Deseja continuar mesmo assim? (s/N)${NC}"
-    read -t 5 -n 1 response || response="n"
+    echo "Verificando log da API:"
+    echo "----------------------------------------"
+    tail -n 20 logs/api.log
+    echo "----------------------------------------"
+    echo ""
+    echo -e "${YELLOW}A API pode estar funcionando mesmo assim.${NC}"
+    echo -e "${YELLOW}Continuando com a inicialização...${NC}"
+    echo ""
+    sleep 2ad -t 5 -n 1 response || response="n"
     echo ""
     if [[ ! $response =~ ^[Ss]$ ]]; then
         bash stop_ubuntu.sh
@@ -163,24 +174,26 @@ fi
 
 echo ""
 echo -e "${BLUE}============================================${NC}"
-echo -e "${GREEN}✅ Sistema iniciado com sucesso!${NC}"
+echo -e "${GREEN}✅ Sistema iniciado!${NC}"
 echo -e "${BLUE}============================================${NC}"
 echo ""
 echo -e "${YELLOW}URLs de acesso:${NC}"
 echo "  📊 Dashboard: $DASHBOARD_PATH"
 echo "  🔌 API: http://localhost:8000"
+echo "  ❤️  Health: http://localhost:8000/health"
 echo "  📖 Docs API: http://localhost:8000/docs"
 echo ""
-echo -e "${YELLOW}Logs do sistema:${NC}"
-echo "  API: logs/api.log"
-echo "  RFID: logs/rfid.log"
+echo -e "${YELLOW}Processos em execução:${NC}"
+echo "  API Backend: PID $API_PID"
+echo "  RFID Reader: PID $RFID_PID"
+[ ! -z "$CHROME_PID" ] && echo "  Chrome: PID $CHROME_PID"
 echo ""
-echo -e "${YELLOW}Para parar o sistema:${NC}"
-echo "  bash stop_ubuntu.sh"
-echo ""
-echo -e "${YELLOW}Para visualizar logs em tempo real:${NC}"
-echo "  tail -f logs/api.log"
-echo "  tail -f logs/rfid.log"
+echo -e "${YELLOW}Comandos úteis:${NC}"
+echo "  Parar sistema: bash stop_ubuntu.sh"
+echo "  Ver log API: tail -f logs/api.log"
+echo "  Ver log RFID: tail -f logs/rfid.log"
+echo "  Testar API: bash test_api.sh"
+echo "  Diagnóstico: bash diagnostico.sh"
 echo ""
 echo -e "${BLUE}============================================${NC}"
 echo -e "${GREEN}Sistema rodando em background!${NC}"

@@ -2,7 +2,26 @@
 
 Sistema de monitoramento de produção utilizando portal RFID com robô UR4. **Projeto em POC (Proof of Concept)**.
 
-## 📋 Descrição
+## � Início Rápido (Ubuntu)
+
+```bash
+# 1. Instalar sistema
+bash install_ubuntu.sh
+
+# 2. Fazer LOGOUT e LOGIN (se primeira instalação)
+
+# 3. Conectar UR4 via USB
+
+# 4. Iniciar sistema
+bash start_ubuntu.sh
+
+# 5. Parar sistema
+bash stop_ubuntu.sh
+```
+
+**Problemas?** Execute: `bash diagnostico.sh`
+
+## �📋 Descrição
 
 Este sistema monitora tags RFID através de 2 antenas conectadas ao UR4:
 - **Antena 1**: Detecta entrada na produção (início)
