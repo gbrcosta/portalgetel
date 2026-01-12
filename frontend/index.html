@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal RFID - Biamar UR4</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- <header>
+            <h1>🏭 Portal RFID - Biamar UR4</h1>
+            <p class="subtitle">Sistema de Monitoramento de Produção - POC</p>
+        </header> -->
+
+        <!-- Navegação -->
+        <nav class="main-nav">
+            <button class="nav-btn active" data-view="dashboard">
+                📊 Dashboard
+            </button>
+            <button class="nav-btn" data-view="auditoria">
+                🔍 Auditoria
+            </button>
+        </nav>
+
+        <!-- VIEW: DASHBOARD -->
+        <div id="dashboard-view" class="view-container active">
+                <!-- Estatísticas Principais -->
+            <section class="stats-grid-main">
+                <div class="stat-card-large highlight">
+                    <div class="stat-icon-large">📦</div>
+                    <div class="stat-content-large">
+                        <h3>Produzido Hoje</h3>
+                        <p class="stat-value-large" id="completedToday">0</p>
+                        <p class="stat-subtext">peças finalizadas</p>
+                    </div>
+                </div>
+                <div class="stat-card-large success">
+                    <div class="stat-icon-large">🏆</div>
+                    <div class="stat-content-large">
+                        <h3>Total Geral</h3>
+                        <p class="stat-value-large" id="totalCompleted">0</p>
+                        <p class="stat-subtext">peças produzidas</p>
+                    </div>
+                </div>
+                <div class="stat-card-large active">
+                    <div class="stat-icon-large">⚡</div>
+                    <div class="stat-content-large">
+                        <h3>Em Produção</h3>
+                        <p class="stat-value-large" id="activeSessions">0</p>
+                        <p class="stat-subtext">em andamento</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tempos Médios -->
+            <section class="stats-grid-secondary">
+                <div class="stat-card-medium">
+                    <div class="stat-icon">⏱️</div>
+                    <div class="stat-content">
+                        <h3>Tempo Médio Hoje</h3>
+                        <p class="stat-value" id="avgDurationToday">--</p>
+                    </div>
+                </div>
+                <div class="stat-card-medium">
+                    <div class="stat-icon">⏰</div>
+                    <div class="stat-content">
+                        <h3>Tempo Médio Geral</h3>
+                        <p class="stat-value" id="avgDuration">--</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sessões em Produção (Tempo Real) -->
+            <section class="section">
+                <h2>⚡ Produção em Andamento</h2>
+                <div id="activeSessions-list" class="sessions-list">
+                    <p class="empty-state">Nenhuma sessão ativa no momento</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- VIEW: AUDITORIA -->
+        <div id="auditoria-view" class="view-container">
+            <!-- Filtros -->
+            <section class="section filters-section">
+                <h2>🔍 Filtros de Auditoria</h2>
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label for="filterStartDate">Data Início</label>
+                        <input type="date" id="filterStartDate" class="filter-input">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterEndDate">Data Fim</label>
+                        <input type="date" id="filterEndDate" class="filter-input">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterTag">Tag ID</label>
+                        <input type="text" id="filterTag" class="filter-input" placeholder="Digite o ID da tag...">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterStatus">Status</label>
+                        <select id="filterStatus" class="filter-input">
+                            <option value="">Todos</option>
+                            <option value="em_producao">Em Produção</option>
+                            <option value="finalizado">Finalizado</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-primary" onclick="applyFilters()">🔍 Aplicar Filtros</button>
+                    <button class="btn btn-secondary" onclick="clearFilters()">🔄 Limpar</button>
+                    <button class="btn btn-success" onclick="exportData()">📥 Exportar CSV</button>
+                </div>
+            </section>
+
+            <!-- Resumo dos Filtros -->
+            <section class="section">
+                <h3>📊 Resumo do Período</h3>
+                <div class="summary-grid">
+                    <div class="summ(POC) ary-item">
+                        <span class="summary-label">Total de Registros:</span>
+                        <span class="summary-value" id="summaryTotal">0</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Finalizados:</span>
+                        <span class="summary-value" id="summaryFinalized">0</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Tempo Médio:</span>
+                        <span class="summary-value" id="summaryAvgTime">--</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tabela de Auditoria -->
+            <section class="section">
+                <h2>📋 Histórico Completo</h2>
+                <div class="table-container">
+                    <table id="auditTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Tag ID</th>
+                                <th>Entrada (Antena 1)</th>
+                                <th>Saída (Antena 2)</th>
+                                <th>Tempo de Produção</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableBody">
+                            <tr>
+                                <td colspan="6" class="empty-state">Carregando dados...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Log de Eventos -->
+            <section class="section">
+                <h2>🔔 Log de Eventos RFID</h2>
+                <div id="auditEvents" class="events-list">
+                    <p class="empty-state">Nenhum evento no período</p>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <footer>
+        <p>Portal RFID - Biamar UR4 | Status: <span id="apiStatus" class="status-indicator">Conectando...</span></p>
+        <p class="footer-info">Última atualização: <span id="lastUpdate">--:--:--</span></p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
