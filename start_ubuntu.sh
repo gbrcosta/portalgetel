@@ -139,12 +139,7 @@ if [ "$API_READY" = false ]; then
     echo -e "${YELLOW}A API pode estar funcionando mesmo assim.${NC}"
     echo -e "${YELLOW}Continuando com a inicialização...${NC}"
     echo ""
-    sleep 2ad -t 5 -n 1 response || response="n"
-    echo ""
-    if [[ ! $response =~ ^[Ss]$ ]]; then
-        bash stop_ubuntu.sh
-        exit 1
-    fi
+    sleep 2
 fi
 
 # Abrir Chrome em tela cheia
