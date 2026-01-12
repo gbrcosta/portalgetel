@@ -40,12 +40,24 @@ class RFIDEvent(Base):
     session_id = Column(Integer)  # Referência à sessão de produção
     
 # Configuração do banco de dados
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'database', 'rfid_portal.db')
+DATABASE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'database')
+DATABASE_PATH = os.path.join(DATABASE_DIR, 'rfid_portal.db')
+
+# Criar diretório do banco de dados se não existir
+if not os.path.exists(DATABASE_DIR):
+    os.makedirs(DATABASE_DIR)
+    print(f"Diretório criado: {DATABASE_DIR}")
+
 engine = create_engine(f'sqlite:///{DATABASE_PATH}', echo=False)
 SessionLocal = sessionmaker(bind=engine)
 
 def init_db():
     """Inicializa o banco de dados criando todas as tabelas"""
+    # Garantir que o diretório existe
+    if not os.path.exists(DATABASE_DIR):
+        os.makedirs(DATABASE_DIR)
+        print(f"Diretório do banco de dados criado: {DATABASE_DIR}")
+    
     Base.metadata.create_all(engine)
     print(f"Banco de dados inicializado em: {DATABASE_PATH}")
 
@@ -53,6 +65,6 @@ def get_db():
     """Retorna uma sessão do banco de dados"""
     db = SessionLocal()
     try:
-        return db
+        yield db
     finally:
-        pass
+        db.close()

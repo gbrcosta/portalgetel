@@ -249,6 +249,49 @@ pip install --upgrade -r requirements.txt
 
 ## 🐛 Troubleshooting
 
+### ❌ Erro: "SQLite unable to open database"
+
+Este é um erro comum de permissões ou diretório faltando.
+
+**Solução 1: Criar diretório manualmente**
+```bash
+# Criar diretório do banco de dados
+mkdir -p database
+
+# Dar permissões corretas
+chmod 755 database
+
+# Testar banco de dados
+python3 test_database.py
+```
+
+**Solução 2: Verificar permissões**
+```bash
+# Ver permissões atuais
+ls -la database/
+
+# Tornar você o dono do diretório
+sudo chown -R $USER:$USER database/
+
+# Dar permissões de escrita
+chmod -R 755 database/
+```
+
+**Solução 3: Reinicializar banco**
+```bash
+# Remover banco antigo (se houver)
+rm -f database/rfid_portal.db
+
+# Recriar estrutura
+source venv/bin/activate
+python3 -c "from backend.models import init_db; init_db()"
+```
+
+**Testar se funcionou:**
+```bash
+python3 test_database.py
+```
+
 ### Erro: "API não respondeu"
 
 ```bash

@@ -5,12 +5,19 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
 import os
+import sys
 
 from models import RFIDTag, ProductionSession, RFIDEvent, get_db, init_db, SessionLocal
 from pydantic import BaseModel
 
 # Inicializar banco de dados
-init_db()
+try:
+    init_db()
+    print("✅ Banco de dados inicializado com sucesso!")
+except Exception as e:
+    print(f"❌ Erro ao inicializar banco de dados: {e}")
+    print(f"   Verifique as permissões do diretório database/")
+    sys.exit(1)
 
 app = FastAPI(title="Portal RFID - Biamar UR4", version="1.0.0")
 
@@ -243,4 +250,10 @@ async def get_recent_events(limit: int = 50, db: Session = Depends(get_db_sessio
 
 if __name__ == "__main__":
     import uvicorn
+    print("=" * 60)
+    print("🚀 Iniciando API - Portal RFID Biamar UR4")
+    print("=" * 60)
+    print("📡 Servidor: http://0.0.0.0:8000")
+    print("📚 Documentação: http://localhost:8000/docs")
+    print("=" * 60)
     uvicorn.run(app, host="0.0.0.0", port=8000)

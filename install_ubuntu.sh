@@ -78,8 +78,11 @@ pip install -r requirements.txt
 echo ""
 echo "✓ Dependências instaladas com sucesso!"
 
-# Criar diretório de logs
+# Criar diretórios necessários
+echo ""
+echo "📁 Criando diretórios necessários..."
 mkdir -p logs
+mkdir -p database
 
 # Tornar scripts executáveis
 echo ""
