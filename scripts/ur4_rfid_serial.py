@@ -22,14 +22,32 @@ except ImportError:
     API_HOST = "localhost"
     API_PORT = 8000
 
+import argparse
+
 # Configurações do Portal
-PORTA_SERIAL = '/dev/ttyUSB0'  # Porta do UR4 via USB
+# PORTA_SERIAL can be passed via --port or detected automatically
+PORTA_SERIAL = '/dev/ttyUSB0'  # default
+
+def _detect_serial_port():
+    # prefer /dev/portal_rfid, then ttyUSB*, then ttyACM*
+    if os.path.exists('/dev/portal_rfid'):
+        return '/dev/portal_rfid'
+    for pattern in ['/dev/ttyUSB*', '/dev/ttyACM*']:
+        try:
+            import glob
+            lst = glob.glob(pattern)
+            for p in lst:
+                if os.path.exists(p):
+                    return p
+        except Exception:
+            continue
+    return '/dev/ttyUSB0'
 BAUDRATE = 115200
 LOCAL_PORTAL = 'Biamar - Linha de Produção'
 PORTAL_ID = 'biamar_ur4_01'
 
 # Configurações de Proteção Anti-Spam
-TIMEOUT_TAG = 300  # 5 minutos - tempo para evitar leituras duplicadas
+TIMEOUT_TAG = 30  # 30 segundos - tempo para evitar leituras duplicadas
 TIMEOUT_TAG_BARULHENTA = 10  # 10 segundos para tags muito detectadas
 MAX_DETECCOES_NORMAL = 10  # máximo de detecções antes de considerar "barulhenta"
 BACKOFF_MAX = 60  # máximo tempo de backoff para retry (segundos)
@@ -67,6 +85,9 @@ class PortalRFIDBiamar:
         
         if API_TOKEN != 'seu-token-aqui':
             self.headers['Authorization'] = f'Bearer {API_TOKEN}'
+
+        # path para arquivo de configuração runtime (se disponível)
+        self.runtime_config_path = os.path.join(os.path.dirname(__file__), '..', 'backend', 'config_runtime.json')
         
         # Configurar handler para Ctrl+C
         signal.signal(signal.SIGINT, self.parar_portal)
@@ -231,10 +252,24 @@ class PortalRFIDBiamar:
             self.contador_fim += 1
             emoji_sentido = "✅"
         
+        # tentar obter potência atual do arquivo de configuração runtime
+        antenna_power = None
+        try:
+            with open(self.runtime_config_path, 'r') as f:
+                cfg = json.load(f)
+                if antena == ANTENA_ENTRADA:
+                    antenna_power = cfg.get('antenna1_power')
+                else:
+                    antenna_power = cfg.get('antenna2_power')
+        except Exception:
+            pass
+
         payload = {
             "tag_id": epc,
             "antenna_number": antena
         }
+        if antenna_power is not None:
+            payload['antenna_power'] = antenna_power
         
         timestamp_br = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         sucesso = False
@@ -299,8 +334,22 @@ class PortalRFIDBiamar:
             ant_num = resp_bytes[-4]
             epc_hex = "".join([f"{b:02X}" for b in epc_bytes])
             
+            # carregar configuração runtime para checar se antena está habilitada
+            antenna_enabled = True
+            try:
+                with open(self.runtime_config_path, 'r') as f:
+                    cfg = json.load(f)
+                    if ant_num == ANTENA_ENTRADA:
+                        antenna_enabled = cfg.get('antenna1_enabled', True)
+                    else:
+                        antenna_enabled = cfg.get('antenna2_enabled', False)
+            except Exception:
+                antenna_enabled = True
+
             # Tentar enviar payload (só conta se realmente enviar)
-            payload_enviado = self.enviar_payload(epc_hex, ant_num)
+            payload_enviado = False
+            if antenna_enabled:
+                payload_enviado = self.enviar_payload(epc_hex, ant_num)
             
             # Só contar se payload foi enviado
             if payload_enviado:
@@ -397,35 +446,24 @@ class PortalRFIDBiamar:
             print(f"   2. Verifique se a porta {PORTA_SERIAL} está correta (ls -la /dev/ttyUSB*)")
             print(f"   3. Verifique permissões: sudo usermod -a -G dialout $USER")
             print(f"   4. Faça logout/login para aplicar permissões")
-            
-        except Exception as e:
-            print(f"❌ ERRO INESPERADO: {e}")
-            
-        finally:
-            if self.ser and self.ser.is_open:
-                try:
-                    cmd_stop = bytes([0xC8, 0x8C, 0x00, 0x08, 0x8C, 0x84, 0x0D, 0x0A])
-                    self.ser.write(cmd_stop)
-                    time.sleep(0.1)
-                    self.ser.close()
-                except:
-                    pass
 
 
 def main():
-    """Função principal"""
-    print("Iniciando Portal RFID Biamar...")
-    
-    # Verificar se está rodando no ambiente virtual
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        print("✅ Executando no ambiente virtual")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', help='Serial port to use (e.g. /dev/ttyUSB0)')
+    args = parser.parse_args()
+
+    global PORTA_SERIAL
+    if args.port:
+        PORTA_SERIAL = args.port
     else:
-        print("⚠️  Recomendado executar no ambiente virtual")
-    
-    # Criar e iniciar o portal
+        PORTA_SERIAL = _detect_serial_port()
+
     portal = PortalRFIDBiamar()
     portal.iniciar_portal()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    main()
+if __name__ == '__main__':
     main()

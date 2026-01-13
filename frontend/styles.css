@@ -410,6 +410,29 @@ tbody tr:hover {
     color: #991b1b;
 }
 
+/* Eventos rejeitados */
+.event-item.rejected-event {
+    background: #fee2e2;
+    border-left: 4px solid var(--danger-color);
+}
+
+.rejected-badge {
+    background: var(--danger-color);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.event-reason {
+    font-size: 0.9em;
+    color: var(--danger-color);
+    font-weight: 500;
+    margin-top: 4px;
+    display: block;
+}
+
 .event-time {
     color: var(--text-secondary);
     font-size: 0.9em;

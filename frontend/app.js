@@ -99,21 +99,26 @@ function updateLastUpdateTime() {
 // Buscar estatísticas do dashboard
 async function fetchDashboardStats() {
     try {
+        console.log('📊 Buscando estatísticas do dashboard...');
         const response = await fetch(`${API_URL}/stats`);
         if (!response.ok) throw new Error('Erro ao buscar estatísticas');
         
         const stats = await response.json();
+        console.log('📊 Estatísticas recebidas:', stats);
         
-        document.getElementById('totalSessions').textContent = stats.total_sessions;
+        // Atualizar cards principais
         document.getElementById('activeSessions').textContent = stats.active_sessions;
         document.getElementById('completedToday').textContent = stats.completed_today;
         document.getElementById('totalCompleted').textContent = stats.total_completed;
+        
+        // Atualizar tempos médios
         document.getElementById('avgDuration').textContent = formatDuration(stats.average_duration);
         document.getElementById('avgDurationToday').textContent = formatDuration(stats.average_duration_today);
         
+        console.log('✅ Dashboard atualizado com sucesso!');
         updateAPIStatus(true);
     } catch (error) {
-        console.error('Erro ao buscar estatísticas:', error);
+        console.error('❌ Erro ao buscar estatísticas:', error);
         updateAPIStatus(false);
     }
 }
@@ -331,26 +336,58 @@ function updateAuditSummary(sessions) {
 // Buscar eventos para auditoria
 async function fetchAuditEvents() {
     try {
-        const response = await fetch(`${API_URL}/events/recent?limit=100`);
-        if (!response.ok) throw new Error('Erro ao buscar eventos');
+        // Buscar eventos aceitos
+        const eventsResponse = await fetch(`${API_URL}/events/recent?limit=100`);
+        if (!eventsResponse.ok) throw new Error('Erro ao buscar eventos');
+        const events = await eventsResponse.json();
         
-        const events = await response.json();
+        // Buscar leituras rejeitadas
+        const rejectedResponse = await fetch(`${API_URL}/rejected/recent?limit=100`);
+        const rejected = rejectedResponse.ok ? await rejectedResponse.json() : [];
+        
         const container = document.getElementById('auditEvents');
         
-        if (events.length === 0) {
+        // Combinar e ordenar por data
+        const allEvents = [
+            ...events.map(e => ({...e, type: 'accepted'})),
+            ...rejected.map(r => ({...r, type: 'rejected'}))
+        ].sort((a, b) => new Date(b.event_time) - new Date(a.event_time)).slice(0, 50);
+        
+        if (allEvents.length === 0) {
             container.innerHTML = '<p class="empty-state">Nenhum evento no período</p>';
         } else {
-            container.innerHTML = events.map(event => `
-                <div class="event-item antenna-${event.antenna_number}">
-                    <div class="event-info">
-                        <span class="event-tag">${event.tag_id}</span>
-                        <span class="event-antenna antenna-${event.antenna_number}-badge">
-                            Antena ${event.antenna_number} ${event.antenna_number === 1 ? '(Entrada)' : '(Saída)'}
-                        </span>
-                    </div>
-                    <span class="event-time">${formatDateTime(event.event_time)}</span>
-                </div>
-            `).join('');
+            container.innerHTML = allEvents.map(event => {
+                if (event.type === 'rejected') {
+                    // Evento rejeitado
+                    return `
+                        <div class="event-item rejected-event">
+                            <div class="event-info">
+                                <span class="event-tag">❌ ${event.tag_id}</span>
+                                <span class="event-antenna rejected-badge">
+                                    ${event.antenna_number !== null ? `Antena ${event.antenna_number}` : 'N/A'} - REJEITADO
+                                </span>
+                                <span class="event-reason">${event.reason}</span>
+                            </div>
+                            <span class="event-time">${formatTime(event.event_time)}</span>
+                        </div>
+                    `;
+                } else {
+                    // Evento aceito
+                    const ant = event.antenna_number;
+                    const antText = ant === 1 ? 'Entrada' : ant === 2 ? 'Saída' : `Ant ${ant}`;
+                    return `
+                        <div class="event-item antenna-${ant}">
+                            <div class="event-info">
+                                <span class="event-tag">${event.tag_id}</span>
+                                <span class="event-antenna antenna-${ant}-badge">
+                                    Antena ${ant} (${antText})
+                                </span>
+                            </div>
+                            <span class="event-time">${formatDateTime(event.event_time)}</span>
+                        </div>
+                    `;
+                }
+            }).join('');
         }
     } catch (error) {
         console.error('Erro ao buscar eventos de auditoria:', error);
@@ -451,6 +488,8 @@ async function init() {
     
     // Primeira carga de dados
     await refreshDashboard();
+
+    // (config screen removed)
     
     // Configurar atualização automática (apenas dashboard)
     setInterval(() => {
@@ -471,3 +510,5 @@ if (document.readyState === 'loading') {
 } else {
     init();
 }
+
+// config functions removed (UI not present)

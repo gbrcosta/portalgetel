@@ -1,0 +1,15 @@
+[Unit]
+Description=Portal RFID Biamar UR4
+After=network.target
+
+[Service]
+Type=simple
+User=getel
+WorkingDirectory=/home/getel/Documentos/portalgetel
+ExecStart=/bin/bash /home/getel/Documentos/portalgetel/start_service.sh
+ExecStop=/bin/bash /home/getel/Documentos/portalgetel/stop_ubuntu.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

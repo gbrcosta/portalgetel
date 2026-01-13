@@ -38,6 +38,17 @@ class RFIDEvent(Base):
     antenna_number = Column(Integer, nullable=False)  # 1 ou 2
     event_time = Column(DateTime, default=datetime.utcnow, index=True)
     session_id = Column(Integer)  # Referência à sessão de produção
+
+class RejectedReading(Base):
+    """Modelo para registrar leituras rejeitadas ou bloqueadas"""
+    __tablename__ = 'rejected_readings'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tag_id = Column(String(100), nullable=False, index=True)
+    antenna_number = Column(Integer)
+    event_time = Column(DateTime, default=datetime.utcnow, index=True)
+    reason = Column(String(255), nullable=False)  # Motivo da rejeição
+    reason_type = Column(String(50))  # 'validation', 'timeout', 'blocked', etc.
     
 # Configuração do banco de dados
 DATABASE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'database')
@@ -58,8 +69,18 @@ def init_db():
         os.makedirs(DATABASE_DIR)
         print(f"Diretório do banco de dados criado: {DATABASE_DIR}")
     
-    Base.metadata.create_all(engine)
-    print(f"Banco de dados inicializado em: {DATABASE_PATH}")
+    # If the DB file does not exist (we moved/removed it), use an in-memory DB
+    global engine, SessionLocal
+    if not os.path.exists(DATABASE_PATH):
+        engine = create_engine('sqlite:///:memory:', echo=False)
+        SessionLocal = sessionmaker(bind=engine)
+        Base.metadata.create_all(engine)
+        print("Banco de dados inicializado em memória (sem persistência).")
+    else:
+        engine = create_engine(f'sqlite:///{DATABASE_PATH}', echo=False)
+        SessionLocal = sessionmaker(bind=engine)
+        Base.metadata.create_all(engine)
+        print(f"Banco de dados inicializado em: {DATABASE_PATH}")
 
 def get_db():
     """Retorna uma sessão do banco de dados"""

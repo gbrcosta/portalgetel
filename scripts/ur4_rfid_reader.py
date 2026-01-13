@@ -7,6 +7,8 @@ import time
 import requests
 import threading
 from datetime import datetime
+import os
+import json
 
 # Configurações
 UR4_IP = "192.168.1.100"  # Altere para o IP do seu UR4
@@ -31,6 +33,8 @@ class UR4RFIDReader:
         
         # Última tag lida (simulação - em produção virá do leitor RFID)
         self.current_tag = None
+        # runtime config path
+        self.runtime_config_path = os.path.join(os.path.dirname(__file__), '..', 'backend', 'config_runtime.json')
     
     def connect(self):
         """Conecta ao UR4"""
@@ -75,10 +79,24 @@ class UR4RFIDReader:
     def send_event_to_api(self, tag_id, antenna_number):
         """Envia evento de leitura para a API"""
         try:
+            # carregar potência/estado runtime (se disponível)
+            antenna_power = None
+            try:
+                with open(self.runtime_config_path, 'r') as f:
+                    cfg = json.load(f)
+                    if antenna_number == 1:
+                        antenna_power = cfg.get('antenna1_power')
+                    else:
+                        antenna_power = cfg.get('antenna2_power')
+            except Exception:
+                pass
+
             payload = {
                 "tag_id": tag_id,
-                "antenna_number": antenna_number
+                "antenna_number": antenna_number,
             }
+            if antenna_power is not None:
+                payload['antenna_power'] = antenna_power
             response = requests.post(self.api_url, json=payload, timeout=5)
             
             if response.status_code == 200:
@@ -101,15 +119,25 @@ class UR4RFIDReader:
                 # Ler estado das antenas
                 antenna_1_state = self.read_digital_input(ANTENNA_1_REGISTER)
                 antenna_2_state = self.read_digital_input(ANTENNA_2_REGISTER)
+
+                # carregar configuração runtime (enable/disable)
+                cfg = {}
+                try:
+                    with open(self.runtime_config_path, 'r') as f:
+                        cfg = json.load(f)
+                except Exception:
+                    cfg = {}
+                antenna1_enabled = cfg.get('antenna1_enabled', True)
+                antenna2_enabled = cfg.get('antenna2_enabled', False)
                 
                 # Detectar mudança de estado na Antena 1 (borda de subida)
-                if antenna_1_state and not self.antenna_1_prev_state:
+                if antenna_1_state and not self.antenna_1_prev_state and antenna1_enabled:
                     tag_id = self.simulate_rfid_read(1)
                     self.current_tag = tag_id
                     self.send_event_to_api(tag_id, 1)
                 
                 # Detectar mudança de estado na Antena 2 (borda de subida)
-                if antenna_2_state and not self.antenna_2_prev_state:
+                if antenna_2_state and not self.antenna_2_prev_state and antenna2_enabled:
                     # Usar a última tag lida
                     if self.current_tag:
                         self.send_event_to_api(self.current_tag, 2)

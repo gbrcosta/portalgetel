@@ -83,22 +83,35 @@ echo ""
 echo -e "${GREEN}📡 Iniciando Leitor RFID (Conexão Serial)...${NC}"
 
 # Verificar se porta serial existe
-if [ -e "/dev/ttyUSB0" ]; then
-    echo "  ✓ Porta /dev/ttyUSB0 encontrada"
-    cd scripts
-    python3 ur4_rfid_serial.py > ../logs/rfid.log 2>&1 &
-    RFID_PID=$!
-    cd ..
-    echo "  ✓ Leitor RFID Serial iniciado (PID: $RFID_PID)"
-else
-    echo -e "${YELLOW}  ⚠️  Porta /dev/ttyUSB0 não encontrada${NC}"
-    echo "  Tentando modo socket (UR4 via rede)..."
-    cd scripts
-    python3 ur4_rfid_reader.py > ../logs/rfid.log 2>&1 &
-    RFID_PID=$!
-    cd ..
-    echo "  ✓ Leitor RFID Socket iniciado (PID: $RFID_PID)"
-fi
+# Detectar porta serial: preferir symlink /dev/portal_rfid, senão ttyUSB*, ttyACM*
+detect_serial() {
+    if [ -e "/dev/portal_rfid" ]; then
+        echo "/dev/portal_rfid"
+        return
+    fi
+    if ls /dev/ttyUSB* >/dev/null 2>&1; then
+        for f in /dev/ttyUSB*; do
+            [ -c "$f" ] && { echo "$f"; return; }
+        done
+    fi
+    if ls /dev/ttyACM* >/dev/null 2>&1; then
+        for f in /dev/ttyACM*; do
+            [ -c "$f" ] && { echo "$f"; return; }
+        done
+    fi
+    # fallback
+    echo "/dev/ttyUSB0"
+}
+
+PORTA_SERIAL=$(detect_serial)
+echo "  ✓ Porta serial selecionada: $PORTA_SERIAL"
+cd scripts
+python3 ur4_rfid_serial.py --port "$PORTA_SERIAL" > ../logs/rfid.log 2>&1 &
+RFID_PID=$!
+cd ..
+echo "  ✓ Leitor RFID Serial iniciado (PID: $RFID_PID)"
+echo "  📄 Log: logs/rfid.log"
+sleep 2
 echo "  📄 Log: logs/rfid.log"
 sleep 2
 
@@ -109,7 +122,8 @@ if ! ps -p $RFID_PID > /dev/null; then
 fi
 
 # Salvar PIDs
-echo "$API_PID" > Testando conexão com a API...${NC}"
+echo "$API_PID" > "$PID_FILE"
+echo "$RFID_PID" >> "$PID_FILE"
 API_READY=false
 
 # Tentar diferentes endpoints

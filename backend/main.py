@@ -1,13 +1,18 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import List, Optional
 import os
 import sys
+import json
+from pathlib import Path
+import serial
+import time
 
-from models import RFIDTag, ProductionSession, RFIDEvent, get_db, init_db, SessionLocal
+from models import RFIDTag, ProductionSession, RFIDEvent, RejectedReading, get_db, init_db, SessionLocal
 from pydantic import BaseModel
 
 # Inicializar banco de dados
@@ -74,7 +79,27 @@ def get_db_session():
 
 @app.get("/")
 async def root():
+    """Serve a página principal do dashboard"""
+    frontend_path = Path(__file__).parent.parent / "frontend" / "index.html"
+    if frontend_path.exists():
+        return FileResponse(frontend_path)
     return {"message": "Portal RFID - Biamar UR4 API", "status": "online"}
+
+@app.get("/static/styles.css")
+async def get_styles():
+    """Serve o arquivo CSS"""
+    css_path = Path(__file__).parent.parent / "frontend" / "styles.css"
+    if css_path.exists():
+        return FileResponse(css_path, media_type="text/css")
+    raise HTTPException(status_code=404, detail="CSS not found")
+
+@app.get("/static/app.js")
+async def get_app_js():
+    """Serve o arquivo JavaScript"""
+    js_path = Path(__file__).parent.parent / "frontend" / "app.js"
+    if js_path.exists():
+        return FileResponse(js_path, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="JS not found")
 
 @app.get("/health")
 async def health_check():
@@ -101,6 +126,25 @@ async def health_check():
 async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get_db_session)):
     """Registra um evento de leitura RFID"""
     
+    # Validar comprimento da tag (deve ter exatamente 24 caracteres)
+    if len(event.tag_id) != 24:
+        # Registrar leitura rejeitada
+        rejected = RejectedReading(
+            tag_id=event.tag_id,
+            antenna_number=event.antenna_number,
+            event_time=datetime.utcnow(),
+            reason=f"Tag inválida: deve ter 24 caracteres (recebido: {len(event.tag_id)})",
+            reason_type="validation"
+        )
+        db.add(rejected)
+        db.commit()
+        
+        return {
+            "success": False,
+            "error": f"Tag inválida: deve ter 24 caracteres (recebido: {len(event.tag_id)})",
+            "tag_id": event.tag_id
+        }
+    
     # Criar o evento
     rfid_event = RFIDEvent(
         tag_id=event.tag_id,
@@ -116,8 +160,8 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
         db.commit()
     
     # Processar baseado na antena
+    # Antena 1: Início de produção (entrada)
     if event.antenna_number == 1:
-        # Antena 1: Início de produção
         # Verificar se já existe sessão ativa para esta tag
         active_session = db.query(ProductionSession).filter(
             ProductionSession.tag_id == event.tag_id,
@@ -140,7 +184,8 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
             db.refresh(session)
             rfid_event.session_id = session.id
     
-    elif event.antenna_number == 2:
+    # Antena 0 ou 2: Fim de produção (saída)
+    elif event.antenna_number in [0, 2]:
         # Antena 2: Fim de produção
         # Buscar sessão ativa para esta tag
         active_session = db.query(ProductionSession).filter(
@@ -268,6 +313,169 @@ async def get_recent_events(limit: int = 50, db: Session = Depends(get_db_sessio
         "event_time": e.event_time,
         "session_id": e.session_id
     } for e in events]
+
+@app.get("/api/rejected/recent")
+async def get_rejected_readings(limit: int = 100, db: Session = Depends(get_db_session)):
+    """Retorna leituras rejeitadas ou bloqueadas"""
+    rejected = db.query(RejectedReading).order_by(
+        RejectedReading.event_time.desc()
+    ).limit(limit).all()
+    
+    return [{
+        "id": r.id,
+        "tag_id": r.tag_id,
+        "antenna_number": r.antenna_number,
+        "event_time": r.event_time,
+        "reason": r.reason,
+        "reason_type": r.reason_type
+    } for r in rejected]
+
+
+# Runtime config file for antenna settings (created if missing)
+CONFIG_PATH = Path(__file__).parent / "config_runtime.json"
+
+def _ensure_config():
+    default = {
+        "antenna1_enabled": True,
+        "antenna2_enabled": False,
+        "antenna1_power": 30,
+        "antenna2_power": 30
+    }
+    if not CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "w") as f:
+                json.dump(default, f, indent=2)
+        except Exception:
+            pass
+    return default
+
+def load_runtime_config():
+    _ensure_config()
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            return json.load(f)
+    except Exception:
+        return _ensure_config()
+
+def save_runtime_config(data: dict):
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def _build_frame(cmd: int, data_bytes: bytes | bytearray) -> bytes:
+    """Builds a frame according to the protocol in the PDF.
+    Frame: Header(2) + Length(2) + CMD(1) + Data(N) + BCC(1) + Trailer(2)
+    Length = total bytes count (header..trailer)
+    BCC = XOR of length bytes, cmd and data bytes
+    """
+    header = bytearray([0xC8, 0x8C])
+    length = 8 + len(data_bytes)  # total frame size
+    length_bytes = bytearray([(length >> 8) & 0xFF, length & 0xFF])
+    body = bytearray([cmd]) + bytearray(data_bytes)
+    bcc = 0
+    for b in length_bytes + body:
+        bcc ^= b
+    trailer = bytearray([0x0D, 0x0A])
+    return bytes(header + length_bytes + body + bytearray([bcc]) + trailer)
+
+
+def _apply_config_to_device(cfg: dict, port: str = '/dev/ttyUSB0') -> dict:
+    """Attempt to apply config to the physical device via serial.
+    Returns a dict with status and any error messages.
+    """
+    result = {"sent": [], "errors": []}
+    try:
+        ser = serial.Serial(port=port, baudrate=115200, timeout=1)
+    except Exception as e:
+        result['errors'].append(f"Cannot open serial port {port}: {e}")
+        return result
+
+    try:
+        # Antenna selection command (0x28)
+        save_flag = 0x01 if cfg.get('save_on_poweroff', True) else 0x00
+        a1 = 1 if cfg.get('antenna1_enabled', True) else 0
+        a2 = 1 if cfg.get('antenna2_enabled', False) else 0
+        bitmask = (a2 << 1) | (a1 << 0)
+        dbyte0 = bitmask & 0xFF
+        dbyte1 = (bitmask >> 8) & 0xFF
+        dbyte2 = save_flag
+        frame_antenna = _build_frame(0x28, bytes([dbyte2, dbyte1, dbyte0]))
+        try:
+            ser.write(frame_antenna)
+            result['sent'].append({'cmd': 'antenna', 'frame': frame_antenna.hex()})
+            time.sleep(0.05)
+        except Exception as e:
+            result['errors'].append(f"Error sending antenna frame: {e}")
+
+        # Transmit power for antenna 1
+        for ant_idx, key in ((1, 'antenna1_power'), (2, 'antenna2_power')):
+            if key in cfg:
+                power_dbm = int(cfg.get(key, 30))
+                power_val = int(power_dbm * 100)
+                msb = (power_val >> 8) & 0xFF
+                lsb = power_val & 0xFF
+                status = 0x02 if cfg.get('save_on_poweroff', True) else 0x00
+                data = bytes([status, ant_idx, msb, lsb, msb, lsb])
+                frame_power = _build_frame(0x10, data)
+                try:
+                    ser.write(frame_power)
+                    result['sent'].append({'cmd': f'power_a{ant_idx}', 'frame': frame_power.hex()})
+                    time.sleep(0.05)
+                except Exception as e:
+                    result['errors'].append(f"Error sending power frame for antenna {ant_idx}: {e}")
+
+        # Optionally read any immediate responses (non-blocking)
+        time.sleep(0.1)
+        try:
+            resp = ser.read(ser.in_waiting or 128)
+            if resp:
+                result['response'] = resp.hex()
+        except Exception:
+            pass
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+
+    return result
+
+
+@app.get("/api/config")
+async def get_config():
+    """Retorna a configuração runtime (antenas/potência)"""
+    return load_runtime_config()
+
+
+@app.post("/api/config")
+async def set_config(payload: dict):
+    """Atualiza a configuração runtime e salva em arquivo"""
+    # Validação simples
+    cfg = load_runtime_config()
+    try:
+        if 'antenna1_enabled' in payload:
+            cfg['antenna1_enabled'] = bool(payload['antenna1_enabled'])
+        if 'antenna2_enabled' in payload:
+            cfg['antenna2_enabled'] = bool(payload['antenna2_enabled'])
+        if 'antenna1_power' in payload:
+            cfg['antenna1_power'] = int(payload['antenna1_power'])
+        if 'antenna2_power' in payload:
+            cfg['antenna2_power'] = int(payload['antenna2_power'])
+
+        saved = save_runtime_config(cfg)
+        if not saved:
+            raise Exception('Não foi possível salvar configuração')
+
+        # Tentar aplicar imediatamente no dispositivo via serial
+        apply_result = _apply_config_to_device(cfg)
+
+        return {"success": True, "config": cfg, "applied": apply_result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Para desenvolvimento: execute com `python3 main.py`
 # Para produção: use `uvicorn main:app --host 0.0.0.0 --port 8000`
