@@ -1,10 +1,17 @@
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 
 Base = declarative_base()
+
+# Timezone de Brasília (UTC-3)
+BRASILIA_TZ = timezone(timedelta(hours=-3))
+
+def brasilia_now():
+    """Retorna o datetime atual no timezone de Brasília"""
+    return datetime.now(BRASILIA_TZ)
 
 class RFIDTag(Base):
     """Modelo para armazenar informações das tags RFID"""
@@ -13,7 +20,7 @@ class RFIDTag(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     tag_id = Column(String(100), unique=True, nullable=False, index=True)
     description = Column(String(255))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=brasilia_now)
     active = Column(Boolean, default=True)
 
 class ProductionSession(Base):
@@ -26,8 +33,8 @@ class ProductionSession(Base):
     antenna_2_time = Column(DateTime)  # Saída na antena 2
     duration_seconds = Column(Float)  # Tempo de produção em segundos
     status = Column(String(20), default='em_producao')  # em_producao, finalizado
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=brasilia_now)
+    updated_at = Column(DateTime, default=brasilia_now, onupdate=brasilia_now)
 
 class RFIDEvent(Base):
     """Modelo para registrar todos os eventos de leitura RFID"""

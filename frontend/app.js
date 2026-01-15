@@ -71,6 +71,7 @@ function formatDateTime(dateString) {
     if (!dateString) return '--:--:--';
     const date = new Date(dateString);
     return date.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -83,7 +84,9 @@ function formatDateTime(dateString) {
 function formatTime(dateString) {
     if (!dateString) return '--:--:--';
     const date = new Date(dateString);
-    return date.toLocaleTimeString('pt-BR');
+    return date.toLocaleTimeString('pt-BR', {
+        timeZone: 'America/Sao_Paulo'
+    });
 }
 
 function formatDuration(seconds) {
@@ -126,7 +129,9 @@ function updateAPIStatus(online) {
 // Atualizar timestamp da última atualização
 function updateLastUpdateTime() {
     const now = new Date();
-    document.getElementById('lastUpdate').textContent = now.toLocaleTimeString('pt-BR');
+    document.getElementById('lastUpdate').textContent = now.toLocaleTimeString('pt-BR', {
+        timeZone: 'America/Sao_Paulo'
+    });
 }
 
 // Buscar estatísticas do dashboard
@@ -635,11 +640,19 @@ function validatePassword() {
     const input = document.getElementById('passwordInput').value;
     const errorDiv = document.getElementById('passwordError');
     
-    // Gerar senha do dia (formato: ddmmaaaa)
-    const today = new Date();
-    const day = String(today.getDate()).padStart(2, '0');
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const year = String(today.getFullYear());
+    // Gerar senha do dia (formato: ddmmaaaa) - horário de Brasília
+    const today = new Date().toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+    
+    // Extrair dia, mês e ano do formato "dd/mm/aaaa, hh:mm:ss"
+    const dateParts = today.split(',')[0].split('/');
+    const day = dateParts[0];
+    const month = dateParts[1];
+    const year = dateParts[2];
     const correctPassword = day + month + year;
     
     if (input === correctPassword) {
