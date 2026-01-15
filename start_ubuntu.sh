@@ -106,7 +106,7 @@ detect_serial() {
 PORTA_SERIAL=$(detect_serial)
 echo "  ✓ Porta serial selecionada: $PORTA_SERIAL"
 cd scripts
-python3 ur4_rfid_serial.py --port "$PORTA_SERIAL" > ../logs/rfid.log 2>&1 &
+python3 ur4_reader.py --port "$PORTA_SERIAL" > ../logs/rfid.log 2>&1 &
 RFID_PID=$!
 cd ..
 echo "  ✓ Leitor RFID Serial iniciado (PID: $RFID_PID)"
