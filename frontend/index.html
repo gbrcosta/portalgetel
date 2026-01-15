@@ -16,10 +16,16 @@
         <!-- Navegação -->
         <nav class="main-nav">
             <button class="nav-btn active" data-view="dashboard">
-                📊 Dashboard
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">Dashboard</span>
             </button>
             <button class="nav-btn" data-view="auditoria">
-                🔍 Auditoria
+                <span class="nav-icon">🔍</span>
+                <span class="nav-text">Auditoria</span>
+            </button>
+            <button class="nav-btn" onclick="showPasswordModal()">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-text">Configurações</span>
             </button>
         </nav>
 
@@ -166,6 +172,228 @@
                     <p class="empty-state">Nenhum evento no período</p>
                 </div>
             </section>
+
+            <!-- Leituras Rejeitadas/Bloqueadas -->
+            <section class="section">
+                <h2>🚫 Leituras Rejeitadas</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tag ID</th>
+                                <th>Antena</th>
+                                <th>Data/Hora</th>
+                                <th>Motivo</th>
+                                <th>Tipo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rejectedTableBody">
+                            <tr>
+                                <td colspan="5" class="empty-state">Nenhuma leitura rejeitada</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- VIEW: CONFIGURAÇÕES -->
+        <div id="configuracoes-view" class="view-container">
+            <section class="section">
+                <h2>⚙️ Configurações do Portal</h2>
+                
+                <!-- Informações do Dispositivo UR4 -->
+                <div class="device-info-card">
+                    <div class="device-header">
+                        <div class="device-icon">📟</div>
+                        <div class="device-title">
+                            <h3>Leitor RFID UR4</h3>
+                            <span class="device-status" id="deviceStatus">
+                                <span class="status-dot"></span> Verificando...
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="device-details-grid">
+                        <div class="device-detail-item">
+                            <span class="detail-icon">🔢</span>
+                            <div class="detail-content">
+                                <span class="detail-label">Número de Série</span>
+                                <span class="detail-value" id="deviceSerial">Carregando...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="device-detail-item">
+                            <span class="detail-icon">💾</span>
+                            <div class="detail-content">
+                                <span class="detail-label">Versão Firmware</span>
+                                <span class="detail-value" id="deviceFirmware">Carregando...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="device-detail-item">
+                            <span class="detail-icon">🔌</span>
+                            <div class="detail-content">
+                                <span class="detail-label">Porta Serial</span>
+                                <span class="detail-value" id="devicePort">Carregando...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="device-detail-item">
+                            <span class="detail-icon">📶</span>
+                            <div class="detail-content">
+                                <span class="detail-label">Antena 1 - Potência</span>
+                                <span class="detail-value" id="deviceAnt1Power">Carregando...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="device-detail-item">
+                            <span class="detail-icon">📶</span>
+                            <div class="detail-content">
+                                <span class="detail-label">Antena 2 - Potência</span>
+                                <span class="detail-value" id="deviceAnt2Power">Carregando...</span>
+                            </div>
+                        </div>
+                        
+                        <div class="device-detail-item">
+                            <span class="detail-icon">🎚️</span>
+                            <div class="detail-content">
+                                <span class="detail-label">Modo de Trabalho</span>
+                                <span class="detail-value" id="deviceWorkMode">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="device-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="refreshDeviceInfo()">
+                            🔄 Atualizar Informações
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Configurações de Antenas -->
+                <div class="config-section">
+                    <h3>📡 Configuração de Antenas</h3>
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label for="configAntenna1">
+                                <input type="checkbox" id="configAntenna1" checked>
+                                Antena 1 (Entrada)
+                            </label>
+                            <div class="config-details">
+                                <label>Potência (dBm):</label>
+                                <input type="number" id="configAntenna1Power" class="config-input" value="30" min="0" max="33">
+                            </div>
+                        </div>
+                        <div class="config-item">
+                            <label for="configAntenna2">
+                                <input type="checkbox" id="configAntenna2" checked>
+                                Antena 2 (Saída)
+                            </label>
+                            <div class="config-details">
+                                <label>Potência (dBm):</label>
+                                <input type="number" id="configAntenna2Power" class="config-input" value="30" min="0" max="33">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configurações de Porta Serial -->
+                <div class="config-section">
+                    <h3>🔌 Porta Serial</h3>
+                    <div class="config-grid">
+                        <div class="config-item full-width">
+                            <label>Porta:</label>
+                            <input type="text" id="configSerialPort" class="config-input" placeholder="AUTO ou COM1, COM3, etc." value="AUTO">
+                            <small class="config-hint">Use "AUTO" para detecção automática ou especifique a porta (COM1, COM3, /dev/ttyUSB0, etc.)</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configurações de Validação -->
+                <div class="config-section">
+                    <h3>🛡️ Validações</h3>
+                    <div class="config-grid">
+                        <div class="config-item full-width">
+                            <label for="configBlockDuplicates">
+                                <input type="checkbox" id="configBlockDuplicates" checked>
+                                Bloquear etiquetas já produzidas
+                            </label>
+                            <small class="config-hint">Impede que etiquetas finalizadas entrem em produção novamente</small>
+                        </div>
+                        <div class="config-item full-width">
+                            <label>Tamanho esperado da tag (caracteres):</label>
+                            <input type="number" id="configTagLength" class="config-input" value="24" min="1" max="100">
+                            <small class="config-hint">Tags com tamanho diferente serão rejeitadas</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configurações de Sistema -->
+                <div class="config-section">
+                    <h3>🖥️ Sistema</h3>
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label>Intervalo de atualização (segundos):</label>
+                            <input type="number" id="configRefreshInterval" class="config-input" value="3" min="1" max="60">
+                        </div>
+                        <div class="config-item">
+                            <label>Portal ID:</label>
+                            <input type="text" id="configPortalId" class="config-input" value="biamar_ur4_01" readonly>
+                            <small class="config-hint">Identificador único deste portal</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ações -->
+                <div class="config-actions">
+                    <button class="btn btn-success" onclick="saveConfiguration()">💾 Salvar Configurações</button>
+                    <button class="btn btn-secondary" onclick="resetConfiguration()">🔄 Restaurar Padrão</button>
+                    <button class="btn btn-danger" onclick="clearDatabase()">🗑️ Limpar Banco de Dados</button>
+                </div>
+
+                <!-- Informações do Sistema -->
+                <div class="config-section">
+                    <h3>ℹ️ Informações do Sistema</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Versão:</span>
+                            <span class="info-value">1.0.0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Banco de Dados:</span>
+                            <span class="info-value" id="dbPath">database/rfid_portal.db</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Total de Tags:</span>
+                            <span class="info-value" id="totalTags">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Total de Sessões:</span>
+                            <span class="info-value" id="totalSessions">0</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Modal de Senha -->
+    <div id="passwordModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔐 Acesso às Configurações</h3>
+                <button class="modal-close" onclick="closePasswordModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <p>Digite a senha para acessar as configurações:</p>
+                <input type="password" id="passwordInput" class="config-input" placeholder="Senha" autocomplete="off">
+                <div id="passwordError" class="password-error"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePasswordModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="validatePassword()">Entrar</button>
+            </div>
         </div>
     </div>
 
@@ -173,6 +401,9 @@
         <p>Portal RFID - Biamar UR4 | Status: <span id="apiStatus" class="status-indicator">Conectando...</span></p>
         <p class="footer-info">Última atualização: <span id="lastUpdate">--:--:--</span></p>
     </footer>
+
+    <!-- Notificações -->
+    <div id="notificationContainer"></div>
 
     <script src="/static/app.js"></script>
 </body>

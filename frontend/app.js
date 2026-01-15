@@ -1,11 +1,44 @@
 // Configuração da API
-const API_URL = 'http://localhost:8000/api';
+const API_URL = `http://${window.location.hostname}:8000/api`;
 const REFRESH_INTERVAL = 3000; // 3 segundos
 
 // Estado da aplicação
 let isConnected = false;
 let currentView = 'dashboard';
 let filteredSessions = [];
+let lastRejectedReadingId = 0; // Para rastrear novas leituras rejeitadas
+
+// Funções de Notificação
+function showNotification(title, message, type = 'info') {
+    const container = document.getElementById('notificationContainer');
+    
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    
+    const iconMap = {
+        error: '🚫',
+        warning: '⚠️',
+        success: '✅',
+        info: 'ℹ️'
+    };
+    
+    notification.innerHTML = `
+        <div class="notification-icon">${iconMap[type] || iconMap.info}</div>
+        <div class="notification-content">
+            <div class="notification-title">${title}</div>
+            <div class="notification-message">${message}</div>
+        </div>
+        <button class="notification-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    container.appendChild(notification);
+    
+    // Auto remover após 8 segundos
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-in';
+        setTimeout(() => notification.remove(), 300);
+    }, 8000);
+}
 
 // Navegação entre views
 function switchView(viewName) {
@@ -215,11 +248,43 @@ async function fetchRecentEvents() {
     }
 }
 
+// Monitorar leituras rejeitadas (etiquetas bloqueadas)
+async function checkRejectedReadings() {
+    try {
+        const response = await fetch(`${API_URL}/rejected/recent?limit=10`);
+        if (!response.ok) return;
+        
+        const rejected = await response.json();
+        
+        // Verificar se há novas leituras rejeitadas
+        if (rejected.length > 0 && rejected[0].id > lastRejectedReadingId) {
+            const newRejections = rejected.filter(r => r.id > lastRejectedReadingId);
+            
+            newRejections.forEach(rejection => {
+                // Notificar apenas erros de validação (não tags já produzidas)
+                if (rejection.reason_type === 'validation') {
+                    showNotification(
+                        '⚠️ VALIDAÇÃO FALHOU',
+                        `Tag ${rejection.tag_id}: ${rejection.reason}`,
+                        'warning'
+                    );
+                }
+                // Tipo 'blocked' (etiquetas já produzidas) não gera notificação
+            });
+            
+            lastRejectedReadingId = rejected[0].id;
+        }
+    } catch (error) {
+        console.log('Erro ao verificar leituras rejeitadas:', error);
+    }
+}
+
 // Atualizar todos os dados do Dashboard
 async function refreshDashboard() {
     await Promise.all([
         fetchDashboardStats(),
-        fetchActiveSessions()
+        fetchActiveSessions(),
+        checkRejectedReadings()
     ]);
     updateLastUpdateTime();
 }
@@ -228,10 +293,47 @@ async function refreshDashboard() {
 async function loadAuditData() {
     await Promise.all([
         fetchAuditSessions(),
-        fetchAuditEvents()
+        fetchAuditEvents(),
+        fetchRejectedReadings()
     ]);
     updateLastUpdateTime();
 }
+
+// Buscar leituras rejeitadas para auditoria
+async function fetchRejectedReadings() {
+    try {
+        const response = await fetch(`${API_URL}/rejected/recent?limit=100`);
+        if (!response.ok) throw new Error('Erro ao buscar leituras rejeitadas');
+        
+        const rejected = await response.json();
+        const tbody = document.getElementById('rejectedTableBody');
+        
+        if (rejected.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma leitura rejeitada</td></tr>';
+        } else {
+            tbody.innerHTML = rejected.map(r => {
+                const typeMap = {
+                    'blocked': '🚫 Bloqueado',
+                    'validation': '⚠️ Validação',
+                    'timeout': '⏱️ Timeout'
+                };
+                
+                return `
+                    <tr>
+                        <td><strong>${r.tag_id}</strong></td>
+                        <td>Antena ${r.antenna_number || 'N/A'}</td>
+                        <td>${formatDateTime(r.event_time)}</td>
+                        <td>${r.reason}</td>
+                        <td><span class="status-badge status-em_producao">${typeMap[r.reason_type] || r.reason_type}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    } catch (error) {
+        console.error('Erro ao buscar leituras rejeitadas:', error);
+    }
+}
+
 
 // Buscar sessões para auditoria
 async function fetchAuditSessions(filters = {}) {
@@ -478,7 +580,9 @@ async function init() {
     
     // Configurar navegação
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.addEventListener('click', () => switchView(btn.dataset.view));
+        if (btn.dataset.view) {
+            btn.addEventListener('click', () => switchView(btn.dataset.view));
+        }
     });
     
     // Configurar data padrão de hoje nos filtros
@@ -486,10 +590,15 @@ async function init() {
     document.getElementById('filterStartDate').value = today;
     document.getElementById('filterEndDate').value = today;
     
+    // Configurar tecla Enter no modal de senha
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            validatePassword();
+        }
+    });
+    
     // Primeira carga de dados
     await refreshDashboard();
-
-    // (config screen removed)
     
     // Configurar atualização automática (apenas dashboard)
     setInterval(() => {
@@ -504,6 +613,229 @@ async function init() {
     console.log('Dashboard inicializado com sucesso!');
 }
 
+// ==================== MODAL DE SENHA ====================
+
+function showPasswordModal() {
+    const modal = document.getElementById('passwordModal');
+    modal.classList.add('show');
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordError').textContent = '';
+    // Focar no input após um pequeno delay para garantir que o modal está visível
+    setTimeout(() => document.getElementById('passwordInput').focus(), 100);
+}
+
+function closePasswordModal() {
+    const modal = document.getElementById('passwordModal');
+    modal.classList.remove('show');
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordError').textContent = '';
+}
+
+function validatePassword() {
+    const input = document.getElementById('passwordInput').value;
+    const errorDiv = document.getElementById('passwordError');
+    
+    // Gerar senha do dia (formato: ddmmaaaa)
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = String(today.getFullYear());
+    const correctPassword = day + month + year;
+    
+    if (input === correctPassword) {
+        closePasswordModal();
+        switchView('configuracoes');
+        loadConfigurationData();
+        showNotification('✅ Acesso Permitido', 'Bem-vindo às configurações', 'success');
+    } else {
+        errorDiv.textContent = '❌ Senha incorreta! Use a data de hoje no formato ddmmaaaa';
+        document.getElementById('passwordInput').value = '';
+        document.getElementById('passwordInput').focus();
+    }
+}
+
+// ==================== CONFIGURAÇÕES ====================
+
+async function loadConfigurationData() {
+    try {
+        // Carregar informações do dispositivo UR4
+        await refreshDeviceInfo();
+        
+        // Carregar estatísticas do banco
+        const statsResponse = await fetch(`${API_URL}/stats`);
+        if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            document.getElementById('totalSessions').textContent = stats.total_sessions || 0;
+        }
+        
+        // Carregar total de tags
+        const tagsResponse = await fetch(`${API_URL}/tags`);
+        if (tagsResponse.ok) {
+            const tags = await tagsResponse.json();
+            document.getElementById('totalTags').textContent = tags.length || 0;
+        }
+        
+        // Carregar configuração do backend (se houver)
+        try {
+            const configResponse = await fetch(`${API_URL}/config`);
+            if (configResponse.ok) {
+                const config = await configResponse.json();
+                applyConfigToForm(config);
+            }
+        } catch (e) {
+            console.log('Configuração não disponível no backend');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar dados de configuração:', error);
+    }
+}
+
+async function refreshDeviceInfo() {
+    try {
+        // Sinalizar para o leitor atualizar
+        await fetch(`${API_URL}/device/refresh`, { method: 'POST' });
+        
+        // Aguardar um pouco e buscar as informações
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const response = await fetch(`${API_URL}/device/info`);
+        if (!response.ok) throw new Error('Erro ao buscar informações do dispositivo');
+        
+        const info = await response.json();
+        
+        // Atualizar status
+        const statusElement = document.getElementById('deviceStatus');
+        const statusDot = statusElement.querySelector('.status-dot');
+        
+        if (info.connected) {
+            statusElement.innerHTML = '<span class="status-dot"></span> Conectado';
+            statusDot.classList.remove('offline');
+        } else {
+            statusElement.innerHTML = '<span class="status-dot offline"></span> Desconectado';
+            if (info.error) {
+                statusElement.innerHTML += ` - ${info.error}`;
+            }
+        }
+        
+        // Atualizar informações
+        document.getElementById('deviceSerial').textContent = info.serial_number || 'N/A';
+        document.getElementById('deviceFirmware').textContent = info.firmware_version || 'N/A';
+        document.getElementById('devicePort').textContent = info.port || 'N/A';
+        document.getElementById('deviceAnt1Power').textContent = info.antenna1_power || 'N/A';
+        document.getElementById('deviceAnt2Power').textContent = info.antenna2_power || 'N/A';
+        document.getElementById('deviceWorkMode').textContent = info.work_mode || 'N/A';
+        
+        if (info.connected) {
+            showNotification('✅ Atualizado', 'Informações do dispositivo atualizadas', 'success');
+        } else {
+            showNotification('⚠️ Desconectado', info.error || 'Dispositivo não está conectado', 'warning');
+        }
+        
+    } catch (error) {
+        console.error('Erro ao buscar informações do dispositivo:', error);
+        document.getElementById('deviceStatus').innerHTML = '<span class="status-dot offline"></span> Erro ao comunicar';
+        showNotification('❌ Erro', 'Não foi possível atualizar as informações', 'error');
+    }
+}
+
+
+function applyConfigToForm(config) {
+    if (config.antenna1_enabled !== undefined) {
+        document.getElementById('configAntenna1').checked = config.antenna1_enabled;
+    }
+    if (config.antenna2_enabled !== undefined) {
+        document.getElementById('configAntenna2').checked = config.antenna2_enabled;
+    }
+    if (config.antenna1_power !== undefined) {
+        document.getElementById('configAntenna1Power').value = config.antenna1_power;
+    }
+    if (config.antenna2_power !== undefined) {
+        document.getElementById('configAntenna2Power').value = config.antenna2_power;
+    }
+    if (config.serial_port !== undefined) {
+        document.getElementById('configSerialPort').value = config.serial_port;
+    }
+}
+
+async function saveConfiguration() {
+    const config = {
+        antenna1_enabled: document.getElementById('configAntenna1').checked,
+        antenna2_enabled: document.getElementById('configAntenna2').checked,
+        antenna1_power: parseInt(document.getElementById('configAntenna1Power').value),
+        antenna2_power: parseInt(document.getElementById('configAntenna2Power').value),
+        serial_port: document.getElementById('configSerialPort').value,
+        block_duplicates: document.getElementById('configBlockDuplicates').checked,
+        tag_length: parseInt(document.getElementById('configTagLength').value),
+        refresh_interval: parseInt(document.getElementById('configRefreshInterval').value)
+    };
+    
+    try {
+        const response = await fetch(`${API_URL}/config`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            showNotification(
+                '✅ Configurações Salvas', 
+                result.message || 'As configurações foram salvas e serão aplicadas automaticamente pelo leitor RFID', 
+                'success'
+            );
+            
+            // Aguardar e atualizar info do dispositivo para confirmar mudanças
+            setTimeout(() => refreshDeviceInfo(), 2000);
+        } else {
+            const error = await response.json();
+            showNotification('❌ Erro ao Salvar', error.detail || 'Não foi possível salvar as configurações', 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao salvar configuração:', error);
+        showNotification('❌ Erro ao Salvar', 'Erro de comunicação com a API', 'error');
+    }
+}
+
+function resetConfiguration() {
+    if (!confirm('Deseja restaurar as configurações padrão?')) {
+        return;
+    }
+    
+    // Valores padrão
+    document.getElementById('configAntenna1').checked = true;
+    document.getElementById('configAntenna2').checked = true;
+    document.getElementById('configAntenna1Power').value = 30;
+    document.getElementById('configAntenna2Power').value = 30;
+    document.getElementById('configSerialPort').value = 'AUTO';
+    document.getElementById('configBlockDuplicates').checked = true;
+    document.getElementById('configTagLength').value = 24;
+    document.getElementById('configRefreshInterval').value = 3;
+    
+    showNotification('🔄 Configurações Restauradas', 'Configurações padrão aplicadas. Clique em Salvar para confirmar.', 'info');
+}
+
+async function clearDatabase() {
+    const confirmation = prompt('⚠️ ATENÇÃO! Esta ação irá apagar TODOS os dados do banco de dados.\n\nDigite "CONFIRMAR" para prosseguir:');
+    
+    if (confirmation !== 'CONFIRMAR') {
+        showNotification('ℹ️ Operação Cancelada', 'Nenhum dado foi apagado', 'info');
+        return;
+    }
+    
+    try {
+        // Criar endpoint no backend para limpar dados (futuro)
+        showNotification('⚠️ Função Não Implementada', 'A limpeza do banco deve ser feita manualmente no servidor', 'warning');
+        
+        // Alternativa: instruir o usuário
+        alert('Para limpar o banco de dados:\n\n1. Pare o sistema\n2. Delete o arquivo: database/rfid_portal.db\n3. Reinicie o sistema\n\nO banco será recriado vazio automaticamente.');
+    } catch (error) {
+        console.error('Erro ao limpar banco:', error);
+        showNotification('❌ Erro', 'Não foi possível limpar o banco de dados', 'error');
+    }
+}
+
 // Iniciar quando o DOM estiver pronto
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
@@ -511,4 +843,3 @@ if (document.readyState === 'loading') {
     init();
 }
 
-// config functions removed (UI not present)

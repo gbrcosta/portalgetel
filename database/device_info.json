@@ -1,0 +1,18 @@
+{
+  "connected": true,
+  "port": "COM4",
+  "module_id": "1E004D00",
+  "serial_number": "HUR40A251000022",
+  "firmware_version": "N/A",
+  "hardware_version": "UR4 RFID Reader",
+  "antenna1_power": "5.0 dBm",
+  "antenna2_power": "10.0 dBm",
+  "work_mode": "Active Mode",
+  "antenna_count": 2,
+  "active_antennas": [
+    1,
+    2
+  ],
+  "last_update": "2026-01-14T14:00:30.534841",
+  "error": null
+}

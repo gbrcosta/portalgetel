@@ -1,0 +1,7 @@
+{
+  "antenna1_enabled": true,
+  "antenna2_enabled": true,
+  "antenna1_power": 5,
+  "antenna2_power": 10,
+  "save_on_poweroff": true
+}

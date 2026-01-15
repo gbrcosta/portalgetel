@@ -9,12 +9,12 @@ ANTENNA_1_REGISTER = 0  # Antena de entrada
 ANTENNA_2_REGISTER = 1  # Antena de saída
 
 # API
-API_HOST = "0.0.0.0"
+API_HOST = "localhost"
 API_PORT = 8000
 
 # Banco de Dados
 DATABASE_NAME = "rfid_portal.db"
 
 # Monitoramento
-READING_INTERVAL = 0.1  # Intervalo entre leituras (segundos)
-DASHBOARD_REFRESH = 2.0  # Intervalo de atualização do dashboard (segundos)
+READING_INTERVAL = 0.01  # Intervalo entre leituras (segundos)
+DASHBOARD_REFRESH = 1.0  # Intervalo de atualização do dashboard (segundos)

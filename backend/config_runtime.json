@@ -1,7 +1,10 @@
 {
   "antenna1_enabled": true,
   "antenna2_enabled": true,
-  "save_on_poweroff": true,
   "antenna1_power": 5,
-  "antenna2_power": 5
+  "antenna2_power": 14,
+  "serial_port": "AUTO",
+  "block_duplicates": true,
+  "tag_length": 24,
+  "refresh_interval": 3
 }

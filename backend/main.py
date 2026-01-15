@@ -8,12 +8,19 @@ from typing import List, Optional
 import os
 import sys
 import json
+import platform
 from pathlib import Path
 import serial
 import time
 
 from models import RFIDTag, ProductionSession, RFIDEvent, RejectedReading, get_db, init_db, SessionLocal
 from pydantic import BaseModel
+
+# Função auxiliar para formatar data/hora
+def formatDateTime(dt):
+    if not dt:
+        return "N/A"
+    return dt.strftime("%d/%m/%Y %H:%M:%S")
 
 # Inicializar banco de dados
 try:
@@ -23,6 +30,9 @@ except Exception as e:
     print(f"❌ Erro ao inicializar banco de dados: {e}")
     print(f"   Verifique as permissões do diretório database/")
     sys.exit(1)
+
+# Variável para configuração (será definida depois das funções)
+CONFIG_PATH = None
 
 app = FastAPI(title="Portal RFID - Biamar UR4", version="1.0.0")
 
@@ -76,6 +86,12 @@ def get_db_session():
         yield db
     finally:
         db.close()
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicializar configurações ao iniciar a API"""
+    _ensure_config()
+    print("✅ Arquivo de configuração inicializado!")
 
 @app.get("/")
 async def root():
@@ -162,6 +178,36 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
     # Processar baseado na antena
     # Antena 1: Início de produção (entrada)
     if event.antenna_number == 1:
+        # PROTEÇÃO: Verificar se esta etiqueta já foi produzida (tem sessão finalizada)
+        finished_session = db.query(ProductionSession).filter(
+            ProductionSession.tag_id == event.tag_id,
+            ProductionSession.status == 'finalizado'
+        ).first()
+        
+        if finished_session:
+            # Registrar leitura rejeitada
+            rejected = RejectedReading(
+                tag_id=event.tag_id,
+                antenna_number=event.antenna_number,
+                event_time=datetime.utcnow(),
+                reason=f"Etiqueta já foi produzida em {formatDateTime(finished_session.antenna_2_time)}",
+                reason_type="blocked"
+            )
+            db.add(rejected)
+            db.add(rfid_event)
+            db.commit()
+            
+            return {
+                "success": False,
+                "error": "ETIQUETA JÁ PRODUZIDA",
+                "message": f"Esta etiqueta já foi produzida em {formatDateTime(finished_session.antenna_2_time)}",
+                "tag_id": event.tag_id,
+                "previous_production": {
+                    "date": finished_session.antenna_2_time,
+                    "duration": finished_session.duration_seconds
+                }
+            }
+        
         # Verificar se já existe sessão ativa para esta tag
         active_session = db.query(ProductionSession).filter(
             ProductionSession.tag_id == event.tag_id,
@@ -264,6 +310,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db_session)):
         ProductionSession.status == 'finalizado',
         ProductionSession.duration_seconds.isnot(None)
     ).all()
+
     
     if avg_result:
         durations = [s.duration_seconds for s in avg_result if s.duration_seconds]
@@ -332,21 +379,24 @@ async def get_rejected_readings(limit: int = 100, db: Session = Depends(get_db_s
 
 
 # Runtime config file for antenna settings (created if missing)
-CONFIG_PATH = Path(__file__).parent / "config_runtime.json"
+CONFIG_PATH = Path(__file__).parent.parent / "database" / "config.json"
 
 def _ensure_config():
     default = {
         "antenna1_enabled": True,
-        "antenna2_enabled": False,
-        "antenna1_power": 30,
-        "antenna2_power": 30
+        "antenna2_enabled": True,
+        "antenna1_power": 5,
+        "antenna2_power": 5,
+        "save_on_poweroff": True
     }
     if not CONFIG_PATH.exists():
         try:
+            # Criar diretório database se não existir
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
             with open(CONFIG_PATH, "w") as f:
                 json.dump(default, f, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ Erro ao criar arquivo de configuração: {e}")
     return default
 
 def load_runtime_config():
@@ -383,11 +433,28 @@ def _build_frame(cmd: int, data_bytes: bytes | bytearray) -> bytes:
     return bytes(header + length_bytes + body + bytearray([bcc]) + trailer)
 
 
-def _apply_config_to_device(cfg: dict, port: str = '/dev/ttyUSB0') -> dict:
+def _apply_config_to_device(cfg: dict, port: str = None) -> dict:
     """Attempt to apply config to the physical device via serial.
     Returns a dict with status and any error messages.
     """
     result = {"sent": [], "errors": []}
+    
+    # Tentar obter porta do device_info.json
+    if not port:
+        try:
+            device_info_path = os.path.join(os.path.dirname(__file__), '..', 'database', 'device_info.json')
+            if os.path.exists(device_info_path):
+                with open(device_info_path, 'r') as f:
+                    device_info = json.load(f)
+                    port = device_info.get('port', 'COM4')
+            else:
+                # Padrão baseado no sistema operacional
+                import platform
+                port = 'COM4' if platform.system() == 'Windows' else '/dev/ttyUSB0'
+        except Exception:
+            import platform
+            port = 'COM4' if platform.system() == 'Windows' else '/dev/ttyUSB0'
+    
     try:
         ser = serial.Serial(port=port, baudrate=115200, timeout=1)
     except Exception as e:
@@ -395,36 +462,62 @@ def _apply_config_to_device(cfg: dict, port: str = '/dev/ttyUSB0') -> dict:
         return result
 
     try:
-        # Antenna selection command (0x28)
+        # Configurar antenas ativas (comando 0x28)
+        # Apenas antenas 1 e 2 devem estar ativas
         save_flag = 0x01 if cfg.get('save_on_poweroff', True) else 0x00
+        
+        # Criar bitmask: bit 0 = antena 1, bit 1 = antena 2
         a1 = 1 if cfg.get('antenna1_enabled', True) else 0
-        a2 = 1 if cfg.get('antenna2_enabled', False) else 0
-        bitmask = (a2 << 1) | (a1 << 0)
-        dbyte0 = bitmask & 0xFF
-        dbyte1 = (bitmask >> 8) & 0xFF
+        a2 = 1 if cfg.get('antenna2_enabled', True) else 0
+        
+        # Bitmask de 16 bits (apenas bits 0 e 1 usados para antenas 1 e 2)
+        antenna_bitmask = (a1 << 0) | (a2 << 1)
+        
+        # Protocolo UR4: DByte2=save_flag, DByte1=MSB, DByte0=LSB
+        dbyte0 = antenna_bitmask & 0xFF  # LSB
+        dbyte1 = (antenna_bitmask >> 8) & 0xFF  # MSB (sempre 0 para 2 antenas)
         dbyte2 = save_flag
+        
         frame_antenna = _build_frame(0x28, bytes([dbyte2, dbyte1, dbyte0]))
         try:
             ser.write(frame_antenna)
-            result['sent'].append({'cmd': 'antenna', 'frame': frame_antenna.hex()})
-            time.sleep(0.05)
+            result['sent'].append({
+                'cmd': 'antenna', 
+                'frame': frame_antenna.hex(),
+                'bitmask': f'0x{antenna_bitmask:04X}',
+                'antennas': [i+1 for i in range(16) if antenna_bitmask & (1 << i)]
+            })
+            time.sleep(0.1)
         except Exception as e:
             result['errors'].append(f"Error sending antenna frame: {e}")
 
-        # Transmit power for antenna 1
+        # Configurar potências das antenas
         for ant_idx, key in ((1, 'antenna1_power'), (2, 'antenna2_power')):
             if key in cfg:
-                power_dbm = int(cfg.get(key, 30))
+                power_dbm = int(cfg.get(key, 5))  # Default 5 dBm
+                
+                # Potência é enviada multiplicada por 100
                 power_val = int(power_dbm * 100)
-                msb = (power_val >> 8) & 0xFF
-                lsb = power_val & 0xFF
+                power_msb = (power_val >> 8) & 0xFF
+                power_lsb = power_val & 0xFF
+                
+                # Status: 0x02 = salvar, 0x00 = não salvar
                 status = 0x02 if cfg.get('save_on_poweroff', True) else 0x00
-                data = bytes([status, ant_idx, msb, lsb, msb, lsb])
+                
+                # Protocolo UR4 Set Power (0x10):
+                # Status, Antenna, Read_Power_MSB, Read_Power_LSB, Write_Power_MSB, Write_Power_LSB
+                data = bytes([status, ant_idx, power_msb, power_lsb, power_msb, power_lsb])
                 frame_power = _build_frame(0x10, data)
+                
                 try:
                     ser.write(frame_power)
-                    result['sent'].append({'cmd': f'power_a{ant_idx}', 'frame': frame_power.hex()})
-                    time.sleep(0.05)
+                    result['sent'].append({
+                        'cmd': f'power_ant{ant_idx}', 
+                        'frame': frame_power.hex(),
+                        'power_dbm': power_dbm,
+                        'antenna': ant_idx
+                    })
+                    time.sleep(0.1)
                 except Exception as e:
                     result['errors'].append(f"Error sending power frame for antenna {ant_idx}: {e}")
 
@@ -451,6 +544,92 @@ async def get_config():
     return load_runtime_config()
 
 
+@app.get("/api/rejected/recent")
+async def get_rejected_readings(limit: int = 10, db: Session = Depends(get_db_session)):
+    """Retorna leituras rejeitadas recentes"""
+    rejected = db.query(RejectedReading).order_by(
+        RejectedReading.event_time.desc()
+    ).limit(limit).all()
+    
+    return [{
+        "id": r.id,
+        "tag_id": r.tag_id,
+        "antenna_number": r.antenna_number,
+        "event_time": r.event_time,
+        "reason": r.reason,
+        "reason_type": r.reason_type
+    } for r in rejected]
+
+
+@app.get("/api/device/info")
+async def get_device_info():
+    """Retorna informações do dispositivo UR4 (número de série, firmware, etc.)"""
+    result = {
+        "connected": False,
+        "serial_number": "N/A",
+        "firmware_version": "N/A",
+        "hardware_version": "N/A",
+        "work_mode": "N/A",
+        "antenna1_power": "N/A",
+        "antenna2_power": "N/A",
+        "port": "N/A",
+        "error": None
+    }
+    
+    try:
+        # Ler arquivo de informações do dispositivo criado pelo rfid_reader.py
+        device_info_file = os.path.join(os.path.dirname(__file__), '..', 'database', 'device_info.json')
+        
+        if os.path.exists(device_info_file):
+            with open(device_info_file, 'r') as f:
+                device_info = json.load(f)
+            
+            # Verificar se a informação não está muito antiga (mais de 10 minutos)
+            from datetime import datetime, timedelta
+            last_update = datetime.fromisoformat(device_info.get('last_update', '2000-01-01'))
+            if datetime.now() - last_update < timedelta(minutes=10):
+                # Informação recente, usar ela
+                result.update(device_info)
+            else:
+                result["error"] = f"Informações desatualizadas (última atualização: {last_update.strftime('%H:%M:%S')})"
+                result["connected"] = False
+        else:
+            result["error"] = "Dispositivo não conectado (leitor RFID não está rodando)"
+            result["connected"] = False
+        
+        # Carregar configurações atuais do config
+        config = load_runtime_config()
+        if result["antenna1_power"] == "N/A":
+            result["antenna1_power"] = f"{config.get('antenna1_power', 30)} dBm"
+        if result["antenna2_power"] == "N/A":
+            result["antenna2_power"] = f"{config.get('antenna2_power', 30)} dBm"
+        if result["work_mode"] == "N/A":
+            result["work_mode"] = "Answer Mode" if config.get('work_mode') == 'answer' else "Active Mode"
+        
+    except Exception as e:
+        result["error"] = str(e)
+        result["connected"] = False
+    
+    return result
+
+
+@app.post("/api/device/refresh")
+async def refresh_device_info():
+    """Sinaliza para o leitor RFID atualizar as informações do dispositivo"""
+    try:
+        # Criar arquivo de sinal para o leitor
+        signal_file = os.path.join(os.path.dirname(__file__), '..', 'database', 'refresh_signal.txt')
+        with open(signal_file, 'w') as f:
+            f.write(datetime.now().isoformat())
+        
+        # Aguardar um pouco para o leitor processar
+        time.sleep(0.5)
+        
+        return {"success": True, "message": "Sinal de atualização enviado"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/config")
 async def set_config(payload: dict):
     """Atualiza a configuração runtime e salva em arquivo"""
@@ -470,10 +649,17 @@ async def set_config(payload: dict):
         if not saved:
             raise Exception('Não foi possível salvar configuração')
 
-        # Tentar aplicar imediatamente no dispositivo via serial
-        apply_result = _apply_config_to_device(cfg)
+        # Criar arquivo de sinalização para o rfid_reader.py aplicar as novas configurações
+        # O rfid_reader.py tem acesso exclusivo à porta serial
+        signal_file = os.path.join(os.path.dirname(__file__), '..', 'database', 'config_changed.txt')
+        with open(signal_file, 'w') as f:
+            f.write(datetime.now().isoformat())
 
-        return {"success": True, "config": cfg, "applied": apply_result}
+        return {
+            "success": True, 
+            "config": cfg, 
+            "message": "Configuração salva. O leitor RFID aplicará as mudanças automaticamente."
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -481,6 +667,11 @@ async def set_config(payload: dict):
 # Para produção: use `uvicorn main:app --host 0.0.0.0 --port 8000`
 if __name__ == "__main__":
     import uvicorn
+    
+    # Garantir que o arquivo de configuração existe
+    _ensure_config()
+    print("✅ Arquivo de configuração inicializado!")
+    
     print("=" * 60)
     print("🚀 Iniciando API - Portal RFID Biamar UR4")
     print("=" * 60)
