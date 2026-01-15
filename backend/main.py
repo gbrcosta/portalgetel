@@ -13,7 +13,7 @@ from pathlib import Path
 import serial
 import time
 
-from models import RFIDTag, ProductionSession, RFIDEvent, RejectedReading, get_db, init_db, SessionLocal
+from models import RFIDTag, ProductionSession, RFIDEvent, RejectedReading, get_db, init_db, SessionLocal, brasilia_now
 from pydantic import BaseModel
 
 # Função auxiliar para formatar data/hora

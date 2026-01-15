@@ -43,7 +43,7 @@ class RFIDEvent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     tag_id = Column(String(100), nullable=False, index=True)
     antenna_number = Column(Integer, nullable=False)  # 1 ou 2
-    event_time = Column(DateTime, default=datetime.utcnow, index=True)
+    event_time = Column(DateTime, default=brasilia_now, index=True)
     session_id = Column(Integer)  # Referência à sessão de produção
 
 class RejectedReading(Base):
@@ -53,7 +53,7 @@ class RejectedReading(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     tag_id = Column(String(100), nullable=False, index=True)
     antenna_number = Column(Integer)
-    event_time = Column(DateTime, default=datetime.utcnow, index=True)
+    event_time = Column(DateTime, default=brasilia_now, index=True)
     reason = Column(String(255), nullable=False)  # Motivo da rejeição
     reason_type = Column(String(50))  # 'validation', 'timeout', 'blocked', etc.
     
