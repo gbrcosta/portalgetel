@@ -128,14 +128,14 @@ async def health_check():
         return {
             "status": "healthy",
             "database": "connected",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": brasilia_now().isoformat()
         }
     except Exception as e:
         return {
             "status": "unhealthy",
             "database": "disconnected",
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": brasilia_now().isoformat()
         }
 
 @app.post("/api/rfid/event")
@@ -148,7 +148,7 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
         rejected = RejectedReading(
             tag_id=event.tag_id,
             antenna_number=event.antenna_number,
-            event_time=datetime.utcnow(),
+            event_time=brasilia_now(),
             reason=f"Tag inválida: deve ter 24 caracteres (recebido: {len(event.tag_id)})",
             reason_type="validation"
         )
@@ -165,7 +165,7 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
     rfid_event = RFIDEvent(
         tag_id=event.tag_id,
         antenna_number=event.antenna_number,
-        event_time=datetime.utcnow()
+        event_time=brasilia_now()
     )
     
     # Verificar se a tag existe, senão criar
@@ -189,7 +189,7 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
             rejected = RejectedReading(
                 tag_id=event.tag_id,
                 antenna_number=event.antenna_number,
-                event_time=datetime.utcnow(),
+                event_time=brasilia_now(),
                 reason=f"Etiqueta já foi produzida em {formatDateTime(finished_session.antenna_2_time)}",
                 reason_type="blocked"
             )
@@ -216,13 +216,13 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
         
         if active_session:
             # Atualizar timestamp da antena 1
-            active_session.antenna_1_time = datetime.utcnow()
-            active_session.updated_at = datetime.utcnow()
+            active_session.antenna_1_time = brasilia_now()
+            active_session.updated_at = brasilia_now()
         else:
             # Criar nova sessão
             session = ProductionSession(
                 tag_id=event.tag_id,
-                antenna_1_time=datetime.utcnow(),
+                antenna_1_time=brasilia_now(),
                 status='em_producao'
             )
             db.add(session)
@@ -241,11 +241,11 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
         
         if active_session and active_session.antenna_1_time:
             # Finalizar sessão
-            active_session.antenna_2_time = datetime.utcnow()
+            active_session.antenna_2_time = brasilia_now()
             duration = (active_session.antenna_2_time - active_session.antenna_1_time).total_seconds()
             active_session.duration_seconds = duration
             active_session.status = 'finalizado'
-            active_session.updated_at = datetime.utcnow()
+            active_session.updated_at = brasilia_now()
             rfid_event.session_id = active_session.id
         else:
             # Sessão não encontrada ou não iniciada corretamente
@@ -299,7 +299,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db_session)):
     ).count()
     
     # Sessões completadas hoje
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = brasilia_now().replace(hour=0, minute=0, second=0, microsecond=0)
     completed_today = db.query(ProductionSession).filter(
         ProductionSession.status == 'finalizado',
         ProductionSession.antenna_2_time >= today_start
@@ -587,7 +587,7 @@ async def get_device_info():
             # Verificar se a informação não está muito antiga (mais de 10 minutos)
             from datetime import datetime, timedelta
             last_update = datetime.fromisoformat(device_info.get('last_update', '2000-01-01'))
-            if datetime.now() - last_update < timedelta(minutes=10):
+            if brasilia_now() - last_update < timedelta(minutes=10):
                 # Informação recente, usar ela
                 result.update(device_info)
             else:
@@ -620,7 +620,7 @@ async def refresh_device_info():
         # Criar arquivo de sinal para o leitor
         signal_file = os.path.join(os.path.dirname(__file__), '..', 'database', 'refresh_signal.txt')
         with open(signal_file, 'w') as f:
-            f.write(datetime.now().isoformat())
+            f.write(brasilia_now().isoformat())
         
         # Aguardar um pouco para o leitor processar
         time.sleep(0.5)
@@ -653,7 +653,7 @@ async def set_config(payload: dict):
         # O rfid_reader.py tem acesso exclusivo à porta serial
         signal_file = os.path.join(os.path.dirname(__file__), '..', 'database', 'config_changed.txt')
         with open(signal_file, 'w') as f:
-            f.write(datetime.now().isoformat())
+            f.write(brasilia_now().isoformat())
 
         return {
             "success": True, 

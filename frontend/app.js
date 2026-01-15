@@ -661,7 +661,7 @@ function validatePassword() {
         loadConfigurationData();
         showNotification('✅ Acesso Permitido', 'Bem-vindo às configurações', 'success');
     } else {
-        errorDiv.textContent = '❌ Senha incorreta! Use a data de hoje no formato ddmmaaaa';
+        errorDiv.textContent = '❌ Senha incorreta!';
         document.getElementById('passwordInput').value = '';
         document.getElementById('passwordInput').focus();
     }
