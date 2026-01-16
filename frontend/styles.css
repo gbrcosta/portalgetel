@@ -621,6 +621,15 @@ footer {
     color: white;
 }
 
+.btn-warning {
+    background: #ff9800;
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #f57c00;
+}
+
 /* Resumo dos Filtros */
 .summary-grid {
     display: grid;

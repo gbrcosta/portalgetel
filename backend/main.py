@@ -300,6 +300,32 @@ async def get_active_sessions(db: Session = Depends(get_db_session)):
     ).order_by(ProductionSession.created_at.desc()).all()
     return sessions
 
+@app.post("/api/sessions/cancel-active")
+async def cancel_active_sessions(db: Session = Depends(get_db_session)):
+    """Cancela todas as sessões ativas (em produção)"""
+    try:
+        # Buscar todas as sessões ativas
+        active_sessions = db.query(ProductionSession).filter(
+            ProductionSession.status == 'em_producao'
+        ).all()
+        
+        cancelled_count = len(active_sessions)
+        
+        # Deletar todas as sessões ativas
+        for session in active_sessions:
+            db.delete(session)
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "cancelled_count": cancelled_count,
+            "message": f"{cancelled_count} produção(ões) cancelada(s) com sucesso"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao cancelar produções: {str(e)}")
+
 @app.get("/api/stats", response_model=DashboardStats)
 async def get_dashboard_stats(db: Session = Depends(get_db_session)):
     """Retorna estatísticas para o dashboard"""

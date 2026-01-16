@@ -829,6 +829,44 @@ function resetConfiguration() {
     showNotification('🔄 Configurações Restauradas', 'Configurações padrão aplicadas. Clique em Salvar para confirmar.', 'info');
 }
 
+async function cancelActiveProductions() {
+    const confirmation = confirm('⚠️ Tem certeza que deseja cancelar TODAS as produções ativas?\n\nEsta ação não pode ser desfeita.');
+    
+    if (!confirmation) {
+        showNotification('ℹ️ Operação Cancelada', 'Nenhuma produção foi cancelada', 'info');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/sessions/cancel-active`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            showNotification(
+                '✅ Produções Canceladas', 
+                `${result.cancelled_count} produção(ões) ativa(s) foi(ram) cancelada(s)`, 
+                'success'
+            );
+            
+            // Atualizar dashboard se estiver visível
+            if (currentView === 'dashboard') {
+                refreshDashboard();
+            }
+        } else {
+            const error = await response.json();
+            showNotification('❌ Erro ao Cancelar', error.detail || 'Não foi possível cancelar as produções', 'error');
+        }
+    } catch (error) {
+        console.error('Erro ao cancelar produções:', error);
+        showNotification('❌ Erro ao Cancelar', 'Erro de comunicação com a API', 'error');
+    }
+}
+
 async function clearDatabase() {
     const confirmation = prompt('⚠️ ATENÇÃO! Esta ação irá apagar TODOS os dados do banco de dados.\n\nDigite "CONFIRMAR" para prosseguir:');
     
