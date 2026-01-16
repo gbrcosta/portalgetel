@@ -112,6 +112,7 @@ cd ..
 echo "  ✓ Leitor RFID Serial iniciado (PID: $RFID_PID)"
 echo "  📄 Log: logs/rfid.log"
 sleep 2
+
 echo "  📄 Log: logs/rfid.log"
 sleep 2
 

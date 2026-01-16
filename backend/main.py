@@ -13,8 +13,18 @@ from pathlib import Path
 import serial
 import time
 
-from models import RFIDTag, ProductionSession, RFIDEvent, RejectedReading, get_db, init_db, SessionLocal, brasilia_now
+from models import RFIDTag, ProductionSession, RFIDEvent, RejectedReading, get_db, init_db, SessionLocal, brasilia_now, BRASILIA_TZ
 from pydantic import BaseModel
+
+# Função auxiliar para garantir que datetime tenha timezone
+def ensure_timezone(dt):
+    """Garante que um datetime tenha timezone (Brasília)"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Se naive, assume que é horário de Brasília
+        return dt.replace(tzinfo=BRASILIA_TZ)
+    return dt
 
 # Função auxiliar para formatar data/hora
 def formatDateTime(dt):
@@ -242,7 +252,12 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
         if active_session and active_session.antenna_1_time:
             # Finalizar sessão
             active_session.antenna_2_time = brasilia_now()
-            duration = (active_session.antenna_2_time - active_session.antenna_1_time).total_seconds()
+            
+            # Garantir que ambos os datetimes tenham timezone antes de subtrair
+            antenna_1_aware = ensure_timezone(active_session.antenna_1_time)
+            antenna_2_aware = ensure_timezone(active_session.antenna_2_time)
+            
+            duration = (antenna_2_aware - antenna_1_aware).total_seconds()
             active_session.duration_seconds = duration
             active_session.status = 'finalizado'
             active_session.updated_at = brasilia_now()
@@ -587,6 +602,7 @@ async def get_device_info():
             # Verificar se a informação não está muito antiga (mais de 10 minutos)
             from datetime import datetime, timedelta
             last_update = datetime.fromisoformat(device_info.get('last_update', '2000-01-01'))
+            last_update = ensure_timezone(last_update)
             if brasilia_now() - last_update < timedelta(minutes=10):
                 # Informação recente, usar ela
                 result.update(device_info)
