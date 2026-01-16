@@ -225,9 +225,10 @@ async def register_rfid_event(event: RFIDEventRequest, db: Session = Depends(get
         ).first()
         
         if active_session:
-            # Atualizar timestamp da antena 1
-            active_session.antenna_1_time = brasilia_now()
+            # Sessão já existe - não atualizar antenna_1_time para preservar tempo de produção
+            # Apenas atualizar updated_at para indicar que a tag ainda está presente
             active_session.updated_at = brasilia_now()
+            rfid_event.session_id = active_session.id
         else:
             # Criar nova sessão
             session = ProductionSession(
